@@ -3,13 +3,15 @@ from datasets import Dataset
 from peft import LoraConfig, AutoPeftModelForCausalLM
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, TrainingArguments
 from trl import SFTTrainer
-import os
 from typing import List, Dict, Optional
 
 import pandas as pd
-import json
 
 from huggingface_hub import login
+
+import argparse
+import os
+import json
 
 
 def tokenize_and_mask(example, tokenizer, max_length=512):
@@ -2065,50 +2067,76 @@ def get_model_and_tokenizer(model_id):
     return model, tokenizer
 
 
-model_id = "meta-llama/Llama-3.2-1B-Instruct"
-model, tokenizer = get_model_and_tokenizer(model_id)
+def main(base_model_name="meta-llama/Llama-3.2-1B-Instruct",
+         output_model_name="Llama-3.2-1B-Instruct-bitty-tunedByAlina",
+         login_key=""):
+    # Load model and tokenizer
+    model_id = base_model_name
+    model, tokenizer = get_model_and_tokenizer(model_id)
+
+    # Prepare training data
+    data = convert_to_chat_format(
+        base_train_data + more_training_data + training_data1 + pow_dataset,
+        system_prompt,
+        'dataset.jsonl'
+    )
+
+    # Configure PEFT
+    peft_config = LoraConfig(
+        r=8, lora_alpha=16, lora_dropout=0.0, bias="none", task_type="CAUSAL_LM"
+    )
+
+    # Login to Hugging Face Hub
+    login(new_session=True, token=login_key)
+
+    # Set environment variables
+    os.environ["WANDB_DISABLED"] = "true"
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
+    # Print CUDA memory summary
+    print(torch.cuda.memory_summary())
+
+    # Define training arguments
+    training_arguments = TrainingArguments(
+        output_dir=output_model_name,
+        report_to=None,
+        per_device_train_batch_size=2,
+        gradient_accumulation_steps=4,
+        optim="paged_adamw_32bit",
+        learning_rate=1e-3,  # for overfitting
+        lr_scheduler_type="constant",  # for overfitting
+        save_strategy="epoch",
+        logging_steps=10,
+        num_train_epochs=50,
+        fp16=True,
+        push_to_hub=True,
+        label_names=["labels"]
+    )
+
+    # Clear CUDA cache
+    torch.cuda.empty_cache()
+    print(torch.cuda.memory_summary())
+
+    # Initialize and train the model
+    trainer = SFTTrainer(
+        model=model,
+        train_dataset=Dataset.from_list(data),
+        peft_config=peft_config,
+        args=training_arguments,
+    )
+    trainer.train()
 
 
-data = convert_to_chat_format(base_train_data + more_training_data +
-                              training_data1 + pow_dataset, system_prompt, 'dataset.jsonl')
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Train BittyLLM model.")
+    parser.add_argument("--base_model_name", type=str,
+                        default="meta-llama/Llama-3.2-1B-Instruct", help="Base model name")
+    parser.add_argument("--output_model_name", type=str,
+                        default="Llama-3.2-1B-Instruct-bitty-tunedByAlina", help="Output model name")
+    parser.add_argument("--login_key", type=str,
+                        required=True, help="Hugging Face login key")
 
-peft_config = LoraConfig(
-    r=8, lora_alpha=16, lora_dropout=0.0, bias="none", task_type="CAUSAL_LM"
-)
+    args = parser.parse_args()
 
-output_model = "Llama-3.2-1B-Instruct-bitty-tunedByAlina"
-login(new_session="")
-
-
-os.environ["WANDB_DISABLED"] = "true"
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-
-print(torch.cuda.memory_summary())
-
-training_arguments = TrainingArguments(
-    output_dir=output_model,
-    report_to=None,
-    per_device_train_batch_size=2,
-    gradient_accumulation_steps=4,
-    optim="paged_adamw_32bit",
-    learning_rate=1e-3,  # for overfitting
-    lr_scheduler_type="constant",  # for overfittin
-    save_strategy="epoch",
-    logging_steps=10,
-    num_train_epochs=50,
-    fp16=True,
-    push_to_hub=True,
-    label_names=["labels"])
-
-torch.cuda.empty_cache()
-print(torch.cuda.memory_summary())
-
-trainer = SFTTrainer(
-    model=model,
-    train_dataset=Dataset.from_list(data),
-    # formatting_func=formatted_train,
-    peft_config=peft_config,
-    args=training_arguments,
-    # packing=True,
-)
-trainer.train()
+    main(base_model_name=args.base_model_name,
+         output_model_name=args.output_model_name, login_key=args.login_key)

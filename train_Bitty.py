@@ -2052,8 +2052,6 @@ pow_dataset = [
 
 
 def get_model_and_tokenizer(model_id):
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
-    tokenizer.pad_token = tokenizer.eos_token
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype="float16"
         # , bnb_4bit_use_double_quant=True
@@ -2064,15 +2062,14 @@ def get_model_and_tokenizer(model_id):
     )
     model.config.use_cache = False
     model.config.pretraining_tp = 1
-    return model, tokenizer
+    return model
 
 
 def main(base_model_name="meta-llama/Llama-3.2-1B-Instruct",
          output_model_name="Llama-3.2-1B-Instruct-bitty-tunedByAlina",
          login_key=""):
-    # Load model and tokenizer
-    model_id = base_model_name
-    model, tokenizer = get_model_and_tokenizer(model_id)
+    # Load model
+    model = get_model_and_tokenizer(base_model_name)
 
     # Prepare training data
     data = convert_to_chat_format(

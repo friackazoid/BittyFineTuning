@@ -2051,7 +2051,7 @@ pow_dataset = [
 ]
 
 
-def get_model_and_tokenizer(model_id):
+def get_model(model_id):
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype="float16"
         # , bnb_4bit_use_double_quant=True
@@ -2066,10 +2066,10 @@ def get_model_and_tokenizer(model_id):
 
 
 def main(base_model_name="meta-llama/Llama-3.2-1B-Instruct",
-         output_model_name="Llama-3.2-1B-Instruct-bitty-tunedByAlina",
+         output_model_name="",
          login_key=""):
     # Load model
-    model = get_model_and_tokenizer(base_model_name)
+    model = get_model(base_model_name)
 
     # Prepare training data
     data = convert_to_chat_format(
@@ -2129,7 +2129,7 @@ if __name__ == "__main__":
     parser.add_argument("--base_model_name", type=str,
                         default="meta-llama/Llama-3.2-1B-Instruct", help="Base model name")
     parser.add_argument("--output_model_name", type=str,
-                        default="Llama-3.2-1B-Instruct-bitty-tunedByAlina", help="Output model name")
+                        default="", help="Output model name")
     parser.add_argument("--login_key", type=str,
                         required=True, help="Hugging Face login key")
 
